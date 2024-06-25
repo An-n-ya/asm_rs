@@ -1,0 +1,8 @@
+48 c7 c0 01 00 00 00    mov    $0x1,%rax
+48 c7 c7 01 00 00 00    mov    $0x1,%rdi
+48 8d 35 eb 0f 00 00    lea    0xfeb(%rip),%rsi        # 402000 <msg>
+48 c7 c2 0e 00 00 00    mov    $0xe,%rdx
+0f 05                   syscall
+48 c7 c0 3c 00 00 00    mov    $0x3c,%rax
+48 31 ff                xor    %rdi,%rdi
+0f 05                   syscall 
