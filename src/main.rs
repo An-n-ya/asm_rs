@@ -1,3 +1,5 @@
+use asm_rs::parser;
+
 fn main() {
-    println!("Hello, world!");
+    parser::register("rax").expect("hello");
 }

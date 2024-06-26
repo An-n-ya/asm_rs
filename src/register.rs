@@ -1,5 +1,6 @@
 use crate::instruction::Operand;
 
+#[derive(PartialEq, Eq, Debug)]
 pub enum Register {
     AX(Len),
     CX(Len),
@@ -11,6 +12,7 @@ pub enum Register {
     DI(Len),
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub enum Len {
     Low8,
     High8,

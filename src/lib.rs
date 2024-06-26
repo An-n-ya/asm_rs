@@ -1,4 +1,4 @@
 mod instruction;
 mod opcode;
-mod parser;
+pub mod parser;
 mod register;

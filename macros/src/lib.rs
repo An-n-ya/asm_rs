@@ -26,31 +26,53 @@ pub fn register_macro(item: proc_macro::TokenStream) -> proc_macro::TokenStream 
     }
     let mut branches = quote! {};
     assert!(arr.len() >= 3, "size of arguments at least 3");
+    let reg = arr[0].clone();
+    let ident = match reg.as_str() {
+        "rax" => "AX",
+        "rbx" => "BX",
+        "rcx" => "CX",
+        "rdx" => "DX",
+        "rsp" => "SP",
+        "rbp" => "BP",
+        "rsi" => "SI",
+        "rdi" => "DI",
+        _ => panic!("cannot handle this register {}", reg),
+    };
+    let reg_ident = Ident::new(ident, Span::call_site());
     branches.extend(quote! {
-        stringify!(arr[0]) => crate::register::Register::BX(crate::register::Len::Full),
+        #reg => crate::register::Register::#reg_ident(crate::register::Len::Full),
     });
+    let reg = &arr[1];
     branches.extend(quote! {
-        stringify!(arr[1]) => crate::register::Register::BX(crate::register::Len::Low32),
+        #reg => crate::register::Register::#reg_ident(crate::register::Len::Low32),
     });
+    let reg = &arr[2];
     branches.extend(quote! {
-        stringify!(arr[2]) => crate::register::Register::BX(crate::register::Len::Low16),
+        #reg => crate::register::Register::#reg_ident(crate::register::Len::Low16),
     });
     if arr.len() > 3 {
+        let reg = &arr[3];
         branches.extend(quote! {
-            stringify!(arr[3]) => crate::register::Register::BX(crate::register::Len::High8),
+            #reg => crate::register::Register::#reg_ident(crate::register::Len::High8),
         });
+        let reg = &arr[4];
         branches.extend(quote! {
-            stringify!(arr[4]) => crate::register::Register::BX(crate::register::Len::Low8),
+            #reg => crate::register::Register::#reg_ident(crate::register::Len::Low8),
         });
     }
     branches.extend(quote! {
-        _ => unreachable!(),
+        _ => {
+            return Err(nom::Err::Error(nom::error::Error::new("cannot parse register", nom::error::ErrorKind::Tag)));
+        },
     });
+    // branches.extend(quote! {
+    //     _ => unreachable!("cannot recognized the register {}", res),
+    // });
     let func_ident = Ident::new(&arr[0], Span::call_site());
 
     quote! {
         fn #func_ident(input: &str) -> nom::IResult<&str, crate::register::Register> {
-            let (res, input) = nom::branch::alt((#tags))(input)?;
+            let (input, res) = nom::branch::alt((#tags))(input)?;
             let res = match res {
                 #branches
             };
