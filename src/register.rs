@@ -1,4 +1,4 @@
-use crate::Operand;
+use crate::instruction::Operand;
 
 pub enum Register {
     AX(Len),
