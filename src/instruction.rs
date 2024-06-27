@@ -1,4 +1,4 @@
-use crate::opcode::OpCode;
+use crate::{opcode::OpCode, register::Register};
 
 struct Instruction {
     prefix: Option<Prefix>,
@@ -17,5 +17,8 @@ pub trait Operand {
     }
     fn is_immediate(&self) -> bool {
         false
+    }
+    fn get_register(&self) -> Option<Register> {
+        None
     }
 }

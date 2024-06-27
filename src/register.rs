@@ -1,6 +1,6 @@
 use crate::instruction::Operand;
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Register {
     AX(Len),
     CX(Len),
@@ -12,7 +12,7 @@ pub enum Register {
     DI(Len),
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Len {
     Low8,
     High8,
@@ -24,5 +24,9 @@ pub enum Len {
 impl Operand for Register {
     fn is_register(&self) -> bool {
         true
+    }
+
+    fn get_register(&self) -> Option<Register> {
+        Some(self.clone())
     }
 }
