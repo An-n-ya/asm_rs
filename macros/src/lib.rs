@@ -2,9 +2,7 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::{parse_macro_input, Expr, ExprArray, Ident, Lit};
 
-#[proc_macro]
-pub fn register_macro(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = parse_macro_input!(item as ExprArray);
+fn parse_str_array(input: ExprArray) -> Vec<String> {
     let mut arr = vec![];
     for elem in &input.elems {
         match elem {
@@ -17,6 +15,13 @@ pub fn register_macro(item: proc_macro::TokenStream) -> proc_macro::TokenStream 
             _ => {}
         }
     }
+    arr
+}
+
+#[proc_macro]
+pub fn register_macro(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(item as ExprArray);
+    let arr = parse_str_array(input);
 
     let mut tags = quote!();
     for elem in &arr {

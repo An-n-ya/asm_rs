@@ -10,6 +10,12 @@ pub enum Register {
     BP(Len),
     SI(Len),
     DI(Len),
+    CS,
+    SS,
+    DS,
+    ES,
+    FS,
+    GS
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
