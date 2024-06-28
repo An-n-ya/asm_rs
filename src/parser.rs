@@ -3,14 +3,20 @@ extern crate proc_macro;
 use macros::register_macro;
 use nom::{
     branch::alt,
-    bytes::complete::{is_a, tag, take_while},
+    bytes::complete::{is_a, tag, take, take_while},
     combinator::map_res,
-    error::Error,
-    sequence::preceded,
+    error::{Error, ErrorKind},
+    sequence::{delimited, preceded, tuple},
     IResult,
 };
 
-use crate::{instruction::Operand, register::Register};
+use crate::{
+    immediate::Immediate,
+    instruction::Operand,
+    memory::{Memory, Offset},
+    register::{Len, Register},
+};
+use nom::Err;
 
 register_macro!(["rax", "eax", "ax", "ah", "al"]);
 register_macro!(["rcx", "ecx", "cx", "ch", "cl"]);
@@ -55,10 +61,106 @@ fn seg_register(input: &str) -> IResult<&str, Register> {
 }
 
 pub fn memory(input: &str) -> IResult<&str, OperandBox> {
-    unimplemented!()
+    delimited(tag("["), memory_inner, tag("]"))(input)
 }
+fn memory_inner(input: &str) -> IResult<&str, OperandBox> {
+    alt((memory_type1, memory_type2, memory_type3))(input)
+}
+fn memory_type3(input: &str) -> IResult<&str, OperandBox> {
+    let (input, res) = immediate(input)?;
+    let offset = res.get_immediate().unwrap();
+    let res = if let Ok(offset) = offset.try_into() {
+        Box::new(Memory::Offset(offset))
+    } else {
+        return Err(nom::Err::Error(Error::new(
+            "offset too large",
+            nom::error::ErrorKind::Verify,
+        )));
+    };
+    Ok((input, res))
+}
+fn memory_type2(input: &str) -> IResult<&str, OperandBox> {
+    map_res(
+        tuple((register, tag("+"), immediate)),
+        |(reg1, _, offset)| {
+            let reg1 = reg1.get_register().unwrap();
+            let offset = offset.get_immediate().unwrap();
+            memory_from_type2(reg1, offset)
+        },
+    )(input)
+}
+fn memory_type1(input: &str) -> IResult<&str, OperandBox> {
+    map_res(
+        tuple((register, tag("+"), register, tag("+"), immediate)),
+        |(reg1, _, reg2, _, offset)| {
+            let reg1 = reg1.get_register().unwrap();
+            let reg2 = reg2.get_register().unwrap();
+            let offset = offset.get_immediate().unwrap();
+            memory_from_type1(reg1, reg2, offset)
+        },
+    )(input)
+}
+fn memory_from_type2(
+    reg: Register,
+    offset: Immediate,
+) -> Result<OperandBox, Err<Error<&'static str>>> {
+    if let Ok(offset) = offset.try_into() {
+        match reg {
+            Register::BX(Len::Low16) => Ok(Box::new(Memory::BX(offset))),
+            Register::BP(Len::Low16) => Ok(Box::new(Memory::BP(offset))),
+            Register::SI(Len::Low16) => Ok(Box::new(Memory::SI(offset))),
+            Register::DI(Len::Low16) => Ok(Box::new(Memory::DI(offset))),
+            _ => Err(nom::Err::Error(Error::new(
+                "reg1 must be bx/bp/si/di ",
+                nom::error::ErrorKind::Verify,
+            ))),
+        }
+    } else {
+        return Err(nom::Err::Error(Error::new(
+            "offset too large",
+            nom::error::ErrorKind::Verify,
+        )));
+    }
+}
+fn memory_from_type1(
+    reg1: Register,
+    reg2: Register,
+    offset: Immediate,
+) -> Result<OperandBox, Err<Error<&'static str>>> {
+    if let Ok(offset) = offset.try_into() {
+        match reg1 {
+            Register::BX(Len::Low16) => match reg2 {
+                Register::SI(Len::Low16) => Ok(Box::new(Memory::BXSI(offset))),
+                Register::DI(Len::Low16) => Ok(Box::new(Memory::BXDI(offset))),
+                _ => Err(nom::Err::Error(Error::new(
+                    "reg2 must be si or di",
+                    nom::error::ErrorKind::Verify,
+                ))),
+            },
+            Register::BP(Len::Low16) => match reg2 {
+                Register::SI(Len::Low16) => Ok(Box::new(Memory::BPSI(offset))),
+                Register::DI(Len::Low16) => Ok(Box::new(Memory::BPDI(offset))),
+                _ => Err(nom::Err::Error(Error::new(
+                    "reg2 must be si or di",
+                    nom::error::ErrorKind::Verify,
+                ))),
+            },
+            _ => Err(nom::Err::Error(Error::new(
+                "reg1 must be bx or bp",
+                nom::error::ErrorKind::Verify,
+            ))),
+        }
+    } else {
+        return Err(nom::Err::Error(Error::new(
+            "offset too large",
+            nom::error::ErrorKind::Verify,
+        )));
+    }
+}
+
 pub fn immediate(input: &str) -> IResult<&str, OperandBox> {
-    unimplemented!()
+    let (input, res) = digits(input)?;
+    Ok((input, Box::new(Immediate(res))))
 }
 
 fn digits(input: &str) -> IResult<&str, u64> {
@@ -103,8 +205,12 @@ mod tests {
 
     #[test]
     fn test_register_parse() {
-        let inputs = ["rax", "ss"];
-        let expectes = [Register::AX(Len::Full), Register::SS];
+        let inputs = ["rax", "ss", "bx"];
+        let expectes = [
+            Register::AX(Len::Full),
+            Register::SS,
+            Register::BX(Len::Low16),
+        ];
         for (input, expect) in inputs.iter().zip(expectes.iter()) {
             let (remain, reg) = register(input).expect("cannot parse rax");
             assert_eq!(reg.get_register().unwrap(), *expect);
@@ -118,6 +224,20 @@ mod tests {
         for (input, expect) in inputs.iter().zip(expectes.iter()) {
             let (remain, reg) = digits(input).expect("cannot parse rax");
             assert_eq!(reg, *expect);
+            assert!(remain.len() == 0);
+        }
+    }
+    #[test]
+    fn test_memory_parse() {
+        let inputs = ["[0x8000]", "[bx+0x1]", "[bx+si+0b10010]"];
+        let expectes = [
+            Memory::Offset(Offset::U16(0x8000)),
+            Memory::BX(Offset::U8(1)),
+            Memory::BXSI(Offset::U8(0b10010)),
+        ];
+        for (input, expect) in inputs.iter().zip(expectes.iter()) {
+            let (remain, reg) = memory(input).expect(&format!("cannot parse {}", input));
+            assert_eq!(reg.get_memory().unwrap(), *expect);
             assert!(remain.len() == 0);
         }
     }
