@@ -4,6 +4,7 @@ use macros::register_macro;
 use nom::{
     branch::alt,
     bytes::complete::{is_a, tag, take, take_while},
+    character::complete::space0,
     combinator::map_res,
     error::{Error, ErrorKind},
     sequence::{delimited, preceded, tuple},
@@ -30,7 +31,11 @@ register_macro!(["rdi", "edi", "di"]);
 type OperandBox = Box<dyn Operand>;
 
 pub fn register(input: &str) -> IResult<&str, OperandBox> {
-    let (input, res) = alt((rax, rbx, rdx, rbx, rsp, rbp, rsi, rdi, seg_register))(input)?;
+    let (input, res) = delimited(
+        space0,
+        alt((rax, rbx, rdx, rbx, rsp, rbp, rsi, rdi, seg_register)),
+        space0,
+    )(input)?;
     Ok((input, Box::new(res)))
 }
 
@@ -61,7 +66,7 @@ fn seg_register(input: &str) -> IResult<&str, Register> {
 }
 
 pub fn memory(input: &str) -> IResult<&str, OperandBox> {
-    delimited(tag("["), memory_inner, tag("]"))(input)
+    delimited(space0, delimited(tag("["), memory_inner, tag("]")), space0)(input)
 }
 fn memory_inner(input: &str) -> IResult<&str, OperandBox> {
     alt((memory_type1, memory_type2, memory_type3))(input)
@@ -159,7 +164,7 @@ fn memory_from_type1(
 }
 
 pub fn immediate(input: &str) -> IResult<&str, OperandBox> {
-    let (input, res) = digits(input)?;
+    let (input, res) = delimited(space0, digits, space0)(input)?;
     Ok((input, Box::new(Immediate(res))))
 }
 
@@ -205,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_register_parse() {
-        let inputs = ["rax", "ss", "bx"];
+        let inputs = [" rax ", " ss ", "bx"];
         let expectes = [
             Register::AX(Len::Full),
             Register::SS,
@@ -229,7 +234,7 @@ mod tests {
     }
     #[test]
     fn test_memory_parse() {
-        let inputs = ["[0x8000]", "[bx+0x1]", "[bx+si+0b10010]"];
+        let inputs = ["[0x8000]", "[bx + 0x1]", "[bx + si + 0b10010]"];
         let expectes = [
             Memory::Offset(Offset::U16(0x8000)),
             Memory::BX(Offset::U8(1)),
